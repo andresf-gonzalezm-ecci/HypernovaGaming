@@ -42,18 +42,35 @@ app.use(session({
 }));
 
 // Conexión a Base de Datos
-connectDB().then(p => {
-  pool = p;
+
+let db; // Guardaremos la conexión aquí
+
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production'
+    ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME}`
+    : 'http://localhost:3000',
+  credentials: true
+}));
+
+app.use(express.json());
+
+// Conexión y arranque del servidor
+connectDB().then(connection => {
+  db = connection;
+
+  app.locals.db = db; // opcional, por si quieres acceder desde rutas
+
   app.listen(PORT, () => {
     const baseUrl = process.env.NODE_ENV === 'production'
-      ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME || 'https://hypernovagaming.onrender.com'}`
+      ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME}`
       : `http://localhost:${PORT}`;
-    
+      
     console.log(`Servidor corriendo en ${baseUrl}`);
   });
 }).catch(err => {
-  console.error('No se pudo conectar a la BD:', err);
+  console.error('No se pudo conectar a la base de datos:', err.message);
 });
+
 
 // Servir el frontend
 app.use(express.static(path.join(__dirname, "../frontend")));
@@ -85,17 +102,17 @@ app.post('/register', async (req, res) => {
   } = req.body;
 
   try {
-    const pool = await connectDB();
+    const connection = await connectDB();
 
     // Verifica si el usuario o correo ya existen
-    const existing = await pool.request()
-      .input('username', sql.NVarChar(100), username)
-      .input('email', sql.NVarChar(150), email)
-      .query(`SELECT * FROM users WHERE username = @username OR email = @email`);
+    const [existing] = await connection.execute(
+      'SELECT * FROM users WHERE username = ? OR email = ?',
+      [username, email]
+    );
 
-    if (existing.recordset.length > 0) {
-      const userExists = existing.recordset.find(u => u.username === username);
-      const emailExists = existing.recordset.find(u => u.email === email);
+    if (existing.length > 0) {
+      const userExists = existing.find(u => u.username === username);
+      const emailExists = existing.find(u => u.email === email);
       const message = userExists ? 'El nombre de usuario ya está en uso.' :
                         emailExists ? 'El correo electrónico ya está registrado.' :
                         'Usuario o correo ya existentes.';
@@ -105,24 +122,15 @@ app.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const now = new Date();
 
-    await pool.request()
-      .input('username', sql.NVarChar(100), username)
-      .input('email', sql.NVarChar(150), email)
-      .input('password', sql.NVarChar(255), hashedPassword)
-      .input('first_name', sql.NVarChar(100), first_name || null)
-      .input('last_name', sql.NVarChar(100), last_name || null)
-      .input('birthdate', sql.Date, birthdate || null)
-      .input('country', sql.NVarChar(100), country || null)
-      .input('city', sql.NVarChar(100), city || null)
-      .input('address', sql.NVarChar(255), address || null)
-      .input('created_at', sql.DateTime, now)
-      .input('updated_at', sql.DateTime, now)
-      .query(`
-        INSERT INTO users (username, email, password, first_name, last_name, birthdate, country, city, address, created_at, updated_at)
-        VALUES (@username, @email, @password, @first_name, @last_name, @birthdate, @country, @city, @address, @created_at, @updated_at)
-      `);
+    // Realiza la inserción del nuevo usuario
+    await connection.execute(
+      `INSERT INTO users (username, email, password, first_name, last_name, birthdate, country, city, address, created_at, updated_at, user_type_id, active) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2, 1)`, 
+      [username, email, hashedPassword, first_name || null, last_name || null, birthdate || null, country || null, city || null, address || null, now, now]
+    );
 
     res.json({ success: true, message: 'Usuario registrado exitosamente' });
+
   } catch (err) {
     console.error('Error en el registro:', err);
     res.status(500).json({ success: false, message: 'Error en el servidor' });
@@ -133,6 +141,7 @@ app.post('/register', async (req, res) => {
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
+  // Validación del nombre de usuario
   if (!/^[a-zA-Z0-9]+$/.test(username)) {
     return res.status(400).json({
       success: false,
@@ -141,41 +150,44 @@ app.post('/login', async (req, res) => {
   }
 
   try {
-    const result = await pool.request()
+    // Conexión a la base de datos
+    const connection = await connectDB();
 
-      .input('username', sql.VarChar, username)
-      .query('SELECT * FROM users WHERE username = @username');
+    // Verificar si el usuario existe en la base de datos
+    const [existing] = await connection.execute(
+      'SELECT * FROM users WHERE username = ?',
+      [username]
+    );
 
-    if (result.recordset.length > 0) {
-
-      const user = result.recordset[0];
+    if (existing.length > 0) {
+      const user = existing[0];
       const isMatch = await bcrypt.compare(password, user.password);
 
       if (isMatch) {
         console.log('user_type_id:', user.user_type_id); // Verificar el valor de user_type_id
 
+        // Guardar detalles del usuario en la sesión
         req.session.user = {
           user_id: user.user_id,
           username: user.username,
           email: user.email,
           user_type_id: user.user_type_id,
-          isAdmin: user.user_type_id === 1 
+          isAdmin: user.user_type_id === 1 // Asumiendo que 1 es para admin
         };
 
-        res.json({ success: true, user_type_id: user.user_type_id });
+        return res.json({ success: true, user_type_id: user.user_type_id });
       } else {
-        res.json({ success: false, message: 'Contraseña incorrecta' });
+        return res.json({ success: false, message: 'Contraseña incorrecta' });
       }
-          
-
     } else {
-      res.json({ success: false, message: 'Usuario no existe' });
+      return res.json({ success: false, message: 'Usuario no existe' });
     }
   } catch (err) {
     console.error('Error al consultar SQL Server:', err);
-    res.status(500).json({ success: false, message: 'Error del servidor' });
+    return res.status(500).json({ success: false, message: 'Error del servidor' });
   }
 });
+
 
 // Mi cuenta
 app.get('/account', async (req, res) => {
@@ -187,13 +199,15 @@ app.get('/account', async (req, res) => {
   try {
     console.log("Sesión autorizada");
 
-    const pool = await connectDB();
-    const result = await pool.request()
-      .input('username', sql.NVarChar(100), req.session.user.username)
-      .query('SELECT username, email, first_name, last_name, birthdate, country, city, address FROM users WHERE username = @username');
+    const connection = await connectDB();  // ✅ conexión estilo MySQL
 
-    if (result.recordset.length > 0) {
-      res.json({ success: true, user: result.recordset[0] });
+    const [rows] = await connection.execute(
+      'SELECT username, email, first_name, last_name, birthdate, country, city, address FROM users WHERE username = ?',
+      [req.session.user.username]
+    );
+
+    if (rows.length > 0) {
+      res.json({ success: true, user: rows[0] });
     } else {
       res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     }
@@ -202,6 +216,7 @@ app.get('/account', async (req, res) => {
     res.status(500).json({ success: false, message: 'Error del servidor' });
   }
 });
+
 
 // Update Account
 app.put('/account', async (req, res) => {
@@ -219,75 +234,59 @@ app.put('/account', async (req, res) => {
     address
   } = req.body;
 
- const transaction = new sql.Transaction(pool);
-  await transaction.begin();
-
-  
-
   try {
-    const pool = await connectDB();
-    await pool.request()
-      .input('user_id', sql.Int, req.session.user.user_id)
-      .input('email', sql.NVarChar(150), email)
-      .input('first_name', sql.NVarChar(100), first_name || null)
-      .input('last_name', sql.NVarChar(100), last_name || null)
-      .input('birthdate', sql.Date, birthdate || null)
-      .input('country', sql.NVarChar(100), country || null)
-      .input('city', sql.NVarChar(100), city || null)
-      .input('address', sql.NVarChar(255), address || null)
-      .input('updated_at', sql.DateTime, new Date())
-      .query(`
-        UPDATE users SET 
-          email = @email,
-          first_name = @first_name,
-          last_name = @last_name,
-          birthdate = @birthdate,
-          country = @country,
-          city = @city,
-          address = @address,
-          updated_at = @updated_at
-        WHERE user_id = @user_id
-      `);
+    const connection = await connectDB();  // ✅ conexión estilo MySQL
 
-      console.log("Consulta preparada para ejecutar:");
-      console.log(`
-        UPDATE users SET 
-          email = '${email}',
-          first_name = '${first_name}',
-          last_name = '${last_name}',
-          birthdate = '${birthdate}',
-          country = '${country}',
-          city = '${city}',
-          address = '${address}',
-          updated_at = '${new Date().toISOString()}'
-        WHERE user_id = ${req.session.user.user_id}
-      `);
-      
+    const updated_at = new Date();
 
-    await transaction.commit(); 
+    await connection.execute(`
+      UPDATE users SET 
+        email = ?,
+        first_name = ?,
+        last_name = ?,
+        birthdate = ?,
+        country = ?,
+        city = ?,
+        address = ?,
+        updated_at = ?
+      WHERE user_id = ?
+    `, [
+      email,
+      first_name || null,
+      last_name || null,
+      birthdate || null,
+      country || null,
+      city || null,
+      address || null,
+      updated_at,
+      req.session.user.user_id
+    ]);
 
-    console.log("Datos recibidos para actualizar:", req.body);
-    console.log("Datos actualizados correctamente")
+    console.log("Datos actualizados correctamente:", req.body);
     res.json({ success: true, message: 'Datos actualizados correctamente' });
+
   } catch (err) {
     console.error('Error al actualizar cuenta:', err);
-    await transaction.rollback();
     res.status(500).json({ success: false, message: 'Error en el servidor' });
   }
 });
 
+
 // Ruta para probar la conexión
 app.get("/test-db", async (req, res) => {
   try {
-    const pool = await connectDB();
-    const result = await pool.request().query("SELECT TOP 1 * FROM users"); // Aquí 'users' es el nombre de la tabla
-    if (result.recordset.length > 0) {
-      res.json(result.recordset); // Responder con los datos de la tabla
+    const connection = await connectDB();
+    const [rows] = await connection.execute("SELECT 1 AS resultado");
+
+    if (rows.length > 0) {
+      res.json(rows); // Devuelve el resultado como JSON
     } else {
-      res.status(404).send("No se encontraron registros en la tabla");
+      res.status(404).send("No se encontraron registros");
     }
+
+    await connection.end(); // Cierra la conexión (importante)
   } catch (err) {
-    console.error("Error al consultar la base de datos", err.message); // Mensaje detallado del error
+    console.error("Error al consultar la base de datos:", err.message);
     res.status(500).send("Error al consultar la base de datos");
   }
 });
@@ -324,7 +323,9 @@ app.get('/logout', (req, res) => {
 
 app.get('/tournaments', async (req, res) => {
   try {
-    const { isAdmin } = req.session; // Suponiendo que isAdmin está en la sesión
+    const { isAdmin } = req.session || {}; // Aseguramos que exista session
+
+    const connection = await connectDB();
 
     let query = `
       SELECT 
@@ -338,15 +339,19 @@ app.get('/tournaments', async (req, res) => {
         COUNT(r.registration_id) AS current_participants,
         t.status,
         t.winner_id,
-		    u.username
+        u.username AS winner_username
       FROM tournaments t
-      LEFT JOIN tournament_registrations r ON t.tournament_id = r.tournament_id AND r.status = 'Inscrito'
-      LEFT JOIN [dbo].[users] u ON t.winner_id = u.user_id
+      LEFT JOIN tournament_registrations r 
+        ON t.tournament_id = r.tournament_id AND r.status = 'Inscrito'
+      LEFT JOIN users u 
+        ON t.winner_id = u.user_id
     `;
 
-    // Si no es administrador, excluir los torneos inactivos (status = 0) y finalizados (status = 2)
+    const queryParams = [];
+
+    // Si no es admin, filtrar torneos inactivos
     if (!isAdmin) {
-      query += " WHERE t.status IN (1,2)"; // Solo los torneos activos y finalizados
+      query += " WHERE t.status IN (1,2)"; // Activo o Finalizado
     }
 
     query += `
@@ -360,20 +365,18 @@ app.get('/tournaments', async (req, res) => {
         t.max_participants,
         t.status,
         t.winner_id,
-		    u.username
+        u.username
       ORDER BY t.start_date DESC
-    `;   // Ordenar por fecha de inicio
+    `;
 
-    const result = await pool.request().query(query);
+    const [rows] = await connection.execute(query, queryParams);
 
-    res.json({ success: true, tournaments: result.recordset });
+    res.json({ success: true, tournaments: rows });
   } catch (err) {
     console.error('Error al obtener torneos:', err);
     res.status(500).json({ success: false, message: 'Error del servidor al obtener torneos' });
   }
 });
-
-
 
 app.post('/tournaments', async (req, res) => {
   const {
@@ -391,19 +394,25 @@ app.post('/tournaments', async (req, res) => {
   }
 
   try {
-    const pool = await sql.connect(); // Usa la conexión global si ya está configurada
+    const connection = await connectDB();
 
-    await pool.request()
-      .input('name', sql.VarChar(100), name)
-      .input('description', sql.VarChar(sql.MAX), description || '')
-      .input('start_date', sql.DateTime, new Date(start_date))
-      .input('end_date', sql.DateTime, new Date(end_date))
-      .input('registration_fee', sql.Decimal(10, 2), registration_fee)
-      .input('max_participants', sql.Int, max_participants)
-      .query(`
-        INSERT INTO tournaments (name, description, start_date, end_date, registration_fee, max_participants)
-        VALUES (@name, @description, @start_date, @end_date, @registration_fee, @max_participants)
-      `);
+    const now = new Date();
+
+    await connection.execute(
+      `INSERT INTO tournaments 
+        (name, description, start_date, end_date, registration_fee, max_participants, created_at, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        description || '',
+        new Date(start_date),
+        new Date(end_date),
+        registration_fee,
+        max_participants,
+        now,
+        1 // status por defecto: Activo
+      ]
+    );
 
     res.status(201).json({ message: 'Torneo creado correctamente' });
 
@@ -415,19 +424,23 @@ app.post('/tournaments', async (req, res) => {
 
 app.get('/tournaments/:id', async (req, res) => {
   const { id } = req.params;
-  try {
-    const pool = await sql.connect();
-    const result = await pool.request()
-      .input('id', sql.Int, id)
-      .query('SELECT * FROM tournaments WHERE tournament_id = @id');
 
-    if (result.recordset.length === 0) {
+  try {
+    const connection = await connectDB();
+
+    const [rows] = await connection.execute(
+      'SELECT * FROM tournaments WHERE tournament_id = ?',
+      [id]
+    );
+
+    if (rows.length === 0) {
       return res.status(404).json({ message: 'Torneo no encontrado' });
     }
 
-    res.json(result.recordset[0]);
+    res.json(rows[0]);
+
   } catch (err) {
-    console.error(err);
+    console.error('Error al obtener torneo:', err);
     res.status(500).json({ message: 'Error al obtener torneo' });
   }
 });
@@ -443,40 +456,32 @@ app.put('/tournaments/:id', async (req, res) => {
     max_participants
   } = req.body;
 
-  // Validación básica de datos
   if (!name || !start_date || !end_date || registration_fee === undefined || max_participants === undefined) {
     return res.status(400).json({ message: 'Faltan datos obligatorios' });
   }
 
   try {
-    const pool = await sql.connect();
+    const connection = await connectDB();
 
-    // Actualizar torneo en la base de datos
-    const result = await pool.request()
-      .input('id', sql.Int, id)
-      .input('name', sql.VarChar(100), name)
-      .input('description', sql.VarChar(sql.MAX), description || '')
-      .input('start_date', sql.DateTime, new Date(start_date))
-      .input('end_date', sql.DateTime, new Date(end_date))
-      .input('registration_fee', sql.Decimal(10, 2), registration_fee)
-      .input('max_participants', sql.Int, max_participants)
-      .query(`
-        UPDATE tournaments
-        SET 
-          name = @name,
-          description = @description,
-          start_date = @start_date,
-          end_date = @end_date,
-          registration_fee = @registration_fee,
-          max_participants = @max_participants
-        WHERE tournament_id = @id
-      `);
+    const [result] = await connection.execute(
+      `UPDATE tournaments
+       SET 
+         name = ?,
+         description = ?,
+         start_date = ?,
+         end_date = ?,
+         registration_fee = ?,
+         max_participants = ?
+       WHERE tournament_id = ?`,
+      [name, description || '', new Date(start_date), new Date(end_date), registration_fee, max_participants, id]
+    );
 
-    if (result.rowsAffected[0] === 0) {
+    if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Torneo no encontrado' });
     }
 
     res.status(200).json({ message: 'Torneo actualizado correctamente' });
+
   } catch (err) {
     console.error('Error al actualizar torneo:', err);
     res.status(500).json({ message: 'Error al actualizar el torneo' });
@@ -487,41 +492,44 @@ app.put('/tournaments/status/:id', async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
+  if (status === undefined) {
+    return res.status(400).json({ message: 'Estado no proporcionado' });
+  }
+
   try {
-    const pool = await sql.connect();
+    const connection = await connectDB();
 
-    // Actualizar torneo en la base de datos
-    const result = await pool.request()
-      .input('id', sql.Int, id) // << FALTABA ESTO
-      .input('status', sql.Int, status)
-      .query(`
-        UPDATE tournaments
-        SET status = @status
-        WHERE tournament_id = @id
-      `);
+    const [result] = await connection.execute(
+      `UPDATE tournaments
+       SET status = ?
+       WHERE tournament_id = ?`,
+      [status, id]
+    );
 
-    if (result.rowsAffected[0] === 0) {
+    if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Torneo no encontrado' });
     }
 
-    res.status(200).json({ message: 'Torneo actualizado correctamente' });
+    res.status(200).json({ message: 'Estado del torneo actualizado correctamente' });
+
   } catch (err) {
-    console.error('Error al actualizar torneo:', err);
-    res.status(500).json({ message: 'Error al actualizar el torneo' });
+    console.error('Error al actualizar estado del torneo:', err);
+    res.status(500).json({ message: 'Error al actualizar el estado del torneo' });
   }
 });
-
 
 app.delete('/tournaments/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
-    const pool = await sql.connect();
-    const result = await pool.request()
-      .input('id', sql.Int, id)
-      .query('DELETE FROM tournaments WHERE tournament_id = @id');
+    const connection = await connectDB();
 
-    if (result.rowsAffected[0] === 0) {
+    const [result] = await connection.execute(
+      'DELETE FROM tournaments WHERE tournament_id = ?',
+      [id]
+    );
+
+    if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Torneo no encontrado' });
     }
 
@@ -536,19 +544,18 @@ app.get('/tournaments/:id/participants', async (req, res) => {
   const { id } = req.params;
 
   try {
-    const pool = await sql.connect();
-    const result = await pool.request()
-      .input('tournament_id', sql.Int, id)
-      .query(`
-        SELECT 
-          u.user_id, 
-          u.username
-        FROM tournament_registrations tr
-        INNER JOIN users u ON tr.user_id = u.user_id
-        WHERE tr.tournament_id = @tournament_id
-      `);
+    const connection = await connectDB();
 
-    res.status(200).json(result.recordset);
+    const [rows] = await connection.execute(`
+      SELECT 
+        u.user_id, 
+        u.username
+      FROM tournament_registrations tr
+      INNER JOIN users u ON tr.user_id = u.user_id
+      WHERE tr.tournament_id = ?
+    `, [id]);
+
+    res.status(200).json(rows);
   } catch (err) {
     console.error('Error al obtener participantes del torneo:', err);
     res.status(500).json({ message: 'Error al obtener los participantes' });
@@ -557,56 +564,56 @@ app.get('/tournaments/:id/participants', async (req, res) => {
 
 app.post('/tournaments/:id/winner', async (req, res) => {
   const { id } = req.params;
-  const { user_id } = req.body; 
+  const { user_id } = req.body;
 
   try {
-    const pool = await sql.connect();
+    const connection = await connectDB();
 
     // Verificar si el usuario está registrado en el torneo
-    const checkUserQuery = `
-      SELECT 1 FROM tournament_registrations 
-      WHERE tournament_id = @tournament_id AND user_id = @user_id
-    `;
-    const userCheck = await pool.request()
-      .input('tournament_id', sql.Int, id)
-      .input('user_id', sql.Int, user_id)
-      .query(checkUserQuery);
+    const [userCheck] = await connection.execute(
+      `SELECT 1 FROM tournament_registrations 
+       WHERE tournament_id = ? AND user_id = ?`,
+      [id, user_id]
+    );
 
-    if (userCheck.recordset.length === 0) {
+    if (userCheck.length === 0) {
       return res.status(404).json({ message: 'El usuario no está inscrito en este torneo.' });
     }
 
-    // Marcar al ganador
-    const result = await pool.request()
-      .input('tournament_id', sql.Int, id)
-      .input('user_id', sql.Int, user_id)
-      .query(`
-        UPDATE tournaments 
-        SET winner_id = @user_id, status = 2  -- Cambiar el estado del torneo a "finalizado"
-        WHERE tournament_id = @tournament_id
-      `);
+    // Asignar ganador y finalizar torneo (status = 2)
+    const [result] = await connection.execute(
+      `UPDATE tournaments 
+       SET winner_id = ?, status = 2 
+       WHERE tournament_id = ?`,
+      [user_id, id]
+    );
 
-    if (result.rowsAffected[0] === 0) {
-      return res.status(404).json({ message: 'Torneo no encontrado o ya está finalizado' });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Torneo no encontrado o ya finalizado' });
     }
 
     res.status(200).json({ message: 'Ganador asignado correctamente.' });
+
   } catch (err) {
     console.error('Error al asignar ganador:', err);
     res.status(500).json({ message: 'Error al asignar el ganador' });
   }
 });
 
-
 app.get('/user-registrations', async (req, res) => {
   if (!req.session.user) return res.status(401).json({ success: false });
 
   try {
-    const result = await pool.request()
-      .input('user_id', sql.Int, req.session.user.user_id)
-      .query('SELECT tournament_id FROM tournament_registrations WHERE user_id = @user_id');
+    const connection = await connectDB();
 
-    const inscritos = result.recordset.map(row => row.tournament_id);
+    // Obtener los torneos a los que el usuario está inscrito
+    const [result] = await connection.execute(
+      'SELECT tournament_id FROM tournament_registrations WHERE user_id = ?',
+      [req.session.user.user_id]
+    );
+
+    const inscritos = result.map(row => row.tournament_id);
+
     res.json({ success: true, inscritos });
 
   } catch (err) {
@@ -614,7 +621,6 @@ app.get('/user-registrations', async (req, res) => {
     res.status(500).json({ success: false, message: "Error del servidor" });
   }
 });
-
 
 app.post('/inscribirse', async (req, res) => {
   if (!req.session.user) {
@@ -625,13 +631,14 @@ app.post('/inscribirse', async (req, res) => {
   const user_id = req.session.user.user_id;
 
   try {
-    await pool.request()
-      .input('user_id', sql.Int, user_id)
-      .input('tournament_id', sql.Int, tournament_id)
-      .query(`
-        INSERT INTO tournament_registrations (user_id, tournament_id, registration_date, status)
-        VALUES (@user_id, @tournament_id, GETDATE(), 'Inscrito')
-      `);
+    const connection = await connectDB();
+
+    // Insertar inscripción del usuario en el torneo
+    await connection.execute(
+      `INSERT INTO tournament_registrations (user_id, tournament_id, registration_date, status)
+      VALUES (?, ?, NOW(), 'Inscrito')`,
+      [user_id, tournament_id]
+    );
 
     res.json({ success: true, message: 'Inscripción exitosa' });
   } catch (err) {
@@ -642,23 +649,19 @@ app.post('/inscribirse', async (req, res) => {
 
 app.get('/users', async (req, res) => {
   // Validar sesión y rol de administrador
-
-  console.log('isAdmin:', req.session.user.isAdmin); // Verificar el valor de isAdmin
-
   if (!req.session || !req.session.user.isAdmin) {
     return res.status(403).json({ success: false, message: 'Acceso denegado' });
   }
 
   try {
-    const pool = await sql.connect();
-    const result = await pool.request().query(`
-      SELECT 
-        *
-      FROM users
-      ORDER BY username
-    `);
+    const connection = await connectDB();
 
-    res.json({ success: true, users: result.recordset });
+    // Consulta para obtener todos los usuarios
+    const [users] = await connection.execute(
+      'SELECT * FROM users ORDER BY username'
+    );
+
+    res.json({ success: true, users });
   } catch (err) {
     console.error('Error al obtener usuarios:', err);
     res.status(500).json({ success: false, message: 'Error del servidor al obtener usuarios' });
@@ -670,19 +673,15 @@ app.put('/users/active/:id', async (req, res) => {
   const { status } = req.body;
 
   try {
-    const pool = await sql.connect();
+    const connection = await connectDB();
 
-    // Actualizar torneo en la base de datos
-    const result = await pool.request()
-      .input('id', sql.Int, id) // 
-      .input('status', sql.Int, status)
-      .query(`
-        UPDATE users
-        SET active = @status
-        WHERE user_id = @id
-      `);
+    // Actualizar el estado de un usuario (activo o inactivo)
+    const [result] = await connection.execute(
+      'UPDATE users SET active = ? WHERE user_id = ?',
+      [status, id]
+    );
 
-    if (result.rowsAffected[0] === 0) {
+    if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
