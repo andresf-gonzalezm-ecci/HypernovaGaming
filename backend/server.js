@@ -13,9 +13,21 @@ let pool;
 
 app.use(express.json());
 
+const allowedOrigins = [
+  'http://localhost:3000', // Origen para desarrollo local
+  'https://hypernovagaming.onrender.com' // Origen para producción en Render (reemplaza con tu URL real)
+];
+
 app.use(cors({
-  origin: 'http://localhost:3000', 
-  credentials: true
+  origin: function (origin, callback) {
+    // Permite solicitudes sin origen (por ejemplo, desde Postman) y solo acepta los orígenes que definimos
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true); // Acepta la solicitud
+    } else {
+      callback(new Error('No permitido por CORS')); // Rechaza la solicitud si no es de un origen permitido
+    }
+  },
+  credentials: true // Habilita el uso de cookies si es necesario
 }));
 
 app.use(session({
@@ -33,7 +45,11 @@ app.use(session({
 connectDB().then(p => {
   pool = p;
   app.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    const baseUrl = process.env.NODE_ENV === 'production'
+      ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME || 'https://hypernovagaming.onrender.com'}`
+      : `http://localhost:${PORT}`;
+    
+    console.log(`Servidor corriendo en ${baseUrl}`);
   });
 }).catch(err => {
   console.error('No se pudo conectar a la BD:', err);
@@ -286,7 +302,11 @@ app.get('/profile', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Servidor escuchando en http://localhost:${PORT}`);
+  const url = process.env.NODE_ENV === 'production'
+    ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME || 'https://hypernovagaming.onrender.com'}`
+    : `http://localhost:${PORT}`;
+
+  console.log(`Servidor escuchando en ${url}`);
 });
 
 // Cerar Sesión
