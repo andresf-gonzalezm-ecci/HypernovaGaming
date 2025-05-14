@@ -33,48 +33,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     pse: document.getElementById("pseForm")
   };
 
-  const allForms = Object.values(forms);
-
-  // Mostrar el formulario adecuado al seleccionar el método
-  paymentMethodSelect.addEventListener("change", () => {
-    const selected = paymentMethodSelect.value;
-
-    allForms.forEach(form => form.style.display = "none");
-    payBtn.disabled = true; // Deshabilitar por defecto
-
-    if (forms[selected]) {
-      forms[selected].style.display = "block";
-    }
-  });
-
-  // Validar solo los campos visibles
-  function validateVisibleForm() {
-    const selected = paymentMethodSelect.value;
-    const currentForm = forms[selected];
-
-    if (!currentForm) {
-      payBtn.disabled = true;
-      return;
-    }
-
-    const requiredFields = currentForm.querySelectorAll("input, select");
-    let isValid = true;
-
-    requiredFields.forEach(field => {
-      if (field.offsetParent !== null && !field.value.trim()) {
-        isValid = false;
-      }
-    });
-
-    payBtn.disabled = !isValid;
-  }
-
-  // Escuchar cambios en todos los inputs y selects de todos los formularios
-  allForms.forEach(form => {
-    const inputs = form.querySelectorAll("input, select");
-    inputs.forEach(input => input.addEventListener("input", validateVisibleForm));
-  });
-    
+  
 });
 
 async function fetchData(path) {
@@ -115,14 +74,6 @@ document.addEventListener("DOMContentLoaded", () => {
       : "none";
   });
 });
-
-function googleTranslateElementInit() {
-  new google.translate.TranslateElement({
-    pageLanguage: 'es',
-    includedLanguages: 'en,es,fr,de,it,pt,ja,zh-CN,ru',
-    layout: google.translate.TranslateElement.InlineLayout.SIMPLE
-  }, 'google_translate_element');
-}
 
 // Register
 
@@ -682,6 +633,7 @@ document.getElementById("getTournaments").addEventListener("click", async functi
 
       // Renderizar torneos con o sin funciones admin
       renderTorneos(data.tournaments, isAdmin);
+      document.getElementById("createTournamentBtn").style.display = 'block';
 
     } else {
       alert("No se pudieron los torneos.");
@@ -744,7 +696,7 @@ async function renderTorneos() {
      // Si el torneo está finalizado, mostramos el ganador
      if (torneo.status === 2) {
       fila.innerHTML += `
-        <td><span class="corona-icon">👑</span> Ganador: ${torneo.username}</td>
+        <td><span class="corona-icon">👑</span> Ganador: ${torneo.winner_username}</td>
       `;
     } else {
        // Lógica de botón de inscripción
@@ -840,7 +792,32 @@ async function eliminarTorneo(id) {
   }
 }
 
+async function cambiarEstadoTorneo(id, nuevoEstado) {
+  const accion = nuevoEstado === 1 ? "habilitar" : "inhabilitar";
+  const confirmar = confirm(`¿Estás seguro de que deseas ${accion} este torneo?`);
 
+  if (!confirmar) return;
+
+  try {
+    const response = await fetch(`/tournaments/status/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ status: nuevoEstado })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) throw new Error(data.message || 'Error al actualizar');
+
+    alert(`✅ Torneo actualizado exitosamente!`);
+    renderTorneos(); // Actualiza la tabla
+
+  } catch (error) {
+    console.error(`Error al ${accion} torneo:`, error);
+    alert("❌ Error al conectar con el servidor.");
+  }
+}
 
 
 // Abrir modal con datos del torneo
@@ -857,7 +834,7 @@ async function modificarTorneo(id) {
 
     // Mostrar formulario
     const form = document.getElementById('tournamentForm');
-    form.hidden = false;
+    form.style.display = 'block'; 
 
     // Ocultar botón de creación, mostrar botón de edición
     document.getElementById('saveCreateBtn').style.display = 'none';
@@ -872,7 +849,7 @@ async function modificarTorneo(id) {
     form.name.value = torneo.name;
     form.description.value = torneo.description;
     form.start_date.value = torneo.start_date.slice(0, 16); // recorta a formato yyyy-MM-ddTHH:mm
-    form.end_date.value = torneo.end_date.slice(0, 16);
+    form.end_date.value = torneo.end_date ? torneo.end_date.slice(0, 16) : '';
     form.registration_fee.value = torneo.registration_fee;
     form.max_participants.value = torneo.max_participants;
 
@@ -926,6 +903,7 @@ document.getElementById('editBtn').addEventListener('click', async () => {
     btn.disabled = false;
     btn.innerHTML = 'Editar Torneo';
     document.getElementById('tournamentForm').style.display = 'none';
+    document.getElementById("createTournamentBtn").style.display = 'block';
   }
 });
 
@@ -1130,10 +1108,12 @@ document.getElementById('createTournamentBtn').addEventListener('click', () => {
   document.getElementById('tournamentForm').style.display = 'block';
   document.getElementById('createTournamentBtn').style.display = 'none';
   document.getElementById('editBtn').style.display = 'none';
+  document.getElementById('saveCreateBtn').style.display = 'block';
 });
 
 document.getElementById('cancelCreateBtn').addEventListener('click', () => {
   document.getElementById('tournamentForm').style.display = 'none';
+  document.getElementById("createTournamentBtn").style.display = 'block';
 });
 
 async function gestionarGanador(torneoId) {
@@ -1333,29 +1313,73 @@ document.getElementById("cvv").addEventListener("input", function (e) {
   this.value = this.value.replace(/\D/g, "").slice(0, 3); // Solo dígitos, máximo 3
 });
 
-document.getElementById("paymentMethod").addEventListener("change", function () {
-  const method = this.value;
+document.getElementById("paymentMethod").addEventListener("change", function() {
+  const paymentMethod = this.value;
 
-  // Ocultar todos los formularios primero
-  document.querySelectorAll(".payment-form").forEach(form => {
-    form.style.display = "none";
-  });
+  // Ocultar todas las secciones de pago
+  document.getElementById("creditCardForm").style.display = "none";
+  document.getElementById("paypalForm").style.display = "none";
+  document.getElementById("pseForm").style.display = "none";
 
-  // Mostrar el formulario correspondiente
-  if (method === "credit_card") {
+  // Mostrar solo la sección correspondiente
+  if (paymentMethod === "creditCard") {
     document.getElementById("creditCardForm").style.display = "block";
-  } else if (method === "paypal") {
+  } else if (paymentMethod === "paypal") {
     document.getElementById("paypalForm").style.display = "block";
-  } else if (method === "pse") {
+  } else if (paymentMethod === "pse") {
     document.getElementById("pseForm").style.display = "block";
   }
-
-  // Activar botón de pagar solo si se selecciona un método
-  document.getElementById("payBtn").disabled = (method === "");
 });
+
 
 document.getElementById("PaymentForm").addEventListener("submit", async function (e) {
   e.preventDefault();
+
+  const paypalSection = document.getElementById("paypalForm");
+  const cardSection = document.getElementById("creditCardForm");
+
+  // Validar según el método visible
+  if (paypalSection.style.display !== "none") {
+    const paypalEmail = paypalSection.querySelector("input[name='paypal_email']");
+    if (!paypalEmail || paypalEmail.value.trim() === "") {
+      alert("Por favor ingresa tu correo de PayPal.");
+      return;
+    }
+  } else if (cardSection.style.display !== "none") {
+      const cardNumber = cardSection.querySelector("input[name='cardNumber']");
+      const cardName = cardSection.querySelector("input[name='cardName']");
+      const expMonth = cardSection.querySelector("select[name='expMonth']");
+      const expYear = cardSection.querySelector("select[name='expYear']");
+      const cvv = cardSection.querySelector("input[name='cvv']");
+
+      if (
+        !cardNumber.value.trim() ||
+        !cardName.value.trim() ||
+        !expMonth.value.trim() ||
+        !expYear.value.trim() ||
+        !cvv.value.trim()
+      ) {
+        alert("Por favor completa todos los campos de la tarjeta.");
+        return;
+      }
+
+      // Validación extra si lo deseas:
+      const cardPattern = /^\d{13,19}$/;
+      const cvvPattern = /^\d{3}$/;
+
+      if (!cardPattern.test(cardNumber.value)) {
+        alert("Número de tarjeta inválido.");
+        return;
+      }
+
+      if (!cvvPattern.test(cvv.value)) {
+        alert("CVV inválido.");
+        return;
+      }
+  } else {
+    alert("No se ha seleccionado un método de pago.");
+    return;
+  }
 
   const payBtn = document.getElementById("payBtn");
   const loadingPopup = document.getElementById("loadingPopup");
@@ -1364,13 +1388,9 @@ document.getElementById("PaymentForm").addEventListener("submit", async function
   // Mostrar popup de carga
   loadingPopup.style.display = "flex";
 
-  // Esperar 5 segundos (simulación de procesamiento)
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  await new Promise(resolve => setTimeout(resolve, 5000)); // Simulación
 
-  // Simular probabilidad de fallo (50%)
   const pagoExitoso = Math.random() < 0.5;
-
-  // Ocultar popup de carga
   loadingPopup.style.display = "none";
 
   if (!pagoExitoso) {
@@ -1378,14 +1398,12 @@ document.getElementById("PaymentForm").addEventListener("submit", async function
     return;
   }
 
-  // Obtener ID del torneo
   const torneoId = window.torneoSeleccionado?.tournament_id;
   if (!torneoId) {
     alert("Error: torneo no encontrado.");
     return;
   }
 
-  // Hacer la solicitud al backend para inscribirse
   const res = await fetch("/inscribirse", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1396,7 +1414,6 @@ document.getElementById("PaymentForm").addEventListener("submit", async function
   const data = await res.json();
 
   if (data.success) {
-    // Mostrar resultado
     document.getElementById("Payment").style.display = "none";
     paymentResult.style.display = "block";
     location.hash = "#paymentResult";
@@ -1404,6 +1421,7 @@ document.getElementById("PaymentForm").addEventListener("submit", async function
     alert("Error al inscribirse: " + data.message);
   }
 });
+
 
 
 function updateRequiredFields() {
@@ -1434,3 +1452,71 @@ document.getElementById("paymentMethod").addEventListener("change", () => {
 });
 
 
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("PaymentForm");
+  const payBtn = document.getElementById("payBtn");
+  const paymentMethod = document.getElementById("paymentMethod");
+
+  const validateForm = () => {
+    const method = paymentMethod.value;
+    let valid = true;
+
+    // Validar que se haya seleccionado un método
+    if (!method) return false;
+
+    // Validar campos dependiendo del método
+    if (method === "credit_card") {
+      const cardNumber = document.getElementById("cardNumber").value.trim();
+      const cardName = form.cardName.value.trim();
+      const expMonth = form.expMonth.value;
+      const expYear = form.expYear.value;
+      const cvv = document.getElementById("cvv").value.trim();
+
+      if (!/^\d{13,19}$/.test(cardNumber)) valid = false;
+      if (!cardName) valid = false;
+      if (!expMonth || !expYear) valid = false;
+      if (!/^\d{3}$/.test(cvv)) valid = false;
+
+    } else if (method === "paypal") {
+      const email = form.paypalEmail.value.trim();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) valid = false;
+
+    } else if (method === "pse") {
+      const bank = form.bank.value.trim();
+      const docType = form.docType.value.trim();
+      const docNumber = form.docNumber.value.trim();
+
+      if (!bank || !docType || !docNumber) valid = false;
+    }
+
+    // Habilitar o deshabilitar el botón
+    payBtn.disabled = !valid;
+  };
+
+  // Validar cuando se cambie el método de pago
+  paymentMethod.addEventListener("change", () => {
+    validateForm();
+  });
+
+  // Validar cuando cambie cualquier campo del formulario
+  form.addEventListener("input", () => {
+    validateForm();
+  });
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  const cardInput = document.getElementById("cardNumber");
+
+  // Previene espacios mientras escribe
+  cardInput.addEventListener("keypress", (e) => {
+    if (e.key === " ") {
+      e.preventDefault(); // Bloquea espacios
+    }
+  });
+
+  // Elimina espacios si se pegan o ya están escritos
+  cardInput.addEventListener("input", () => {
+    cardInput.value = cardInput.value.replace(/\s+/g, '');
+  });
+});

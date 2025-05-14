@@ -16,7 +16,16 @@
 
 		<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
 
-		<script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+		<script>
+			window.googleTranslateElementInit = function () {
+				new google.translate.TranslateElement({
+				pageLanguage: 'es',
+				includedLanguages: 'en,es,fr,de,it,pt,ja,zh-CN,ru',
+				layout: google.translate.TranslateElement.InlineLayout.SIMPLE
+				}, 'google_translate_element');
+			};
+			</script>
+		<script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 
 	</head>
 	<body class="is-preload">
@@ -332,98 +341,95 @@
 						<article id="Payment" style="display: none;"> 
 							<h2>Pago</h2>
 							<form id="PaymentForm">
-							  <p>
-								<strong>Torneo:</strong> <span id="paymentTournamentName"></span>
-							  </p>
-							  <p>
-								<strong>Descripción:</strong> <span id="paymentTournamentDescription"></span>
-							  </p>
-							  <p>
-								<strong>Valor inscripción:</strong> 
-								$<span id="paymentTournamentFee"></span> <span id="currencyLabel">USD</span>
-								<button type="button" id="changeCurrencyBtn" style="font-family: unset !important; box-shadow: none !important; color: #ff9dff !important; font-size: 0.6rem !important; letter-spacing: 0.05rem !important; background: none !important; border: none !important; padding: 2px 4px !important; cursor: pointer !important;">
+								<p><strong>Torneo:</strong> <span id="paymentTournamentName"></span></p>
+								<p><strong>Descripción:</strong> <span id="paymentTournamentDescription"></span></p>
+								<p><strong>Valor inscripción:</strong> $<span id="paymentTournamentFee"></span> <span id="currencyLabel">USD</span>
+									<button type="button" id="changeCurrencyBtn" style="font-family: unset !important; box-shadow: none !important; color: #ff9dff !important; font-size: 0.6rem !important; letter-spacing: 0.05rem !important; background: none !important; border: none !important; padding: 2px 4px !important; cursor: pointer !important;">
 									Cambiar moneda
 								  </button>
-																
-							  </p>
-						 		 <!-- Select oculto por defecto -->
-								  <div id="currencySelector" style="display: none; margin-bottom: 1rem;">
+								</p>
+
+								<!-- Selector de moneda -->
+								<div id="currencySelector" style="display: none;">
 									<label for="currency">Selecciona moneda:</label>
 									<select id="currency" name="currency">
-									  <option value="USD">USD - Dólar</option>
-									  <option value="COP">COP - Peso Colombiano</option>
-									  <option value="EUR">EUR - Euro</option>
-									  <!-- Monedas asiáticas -->
-									  <option value="JPY">JPY - Yen Japonés</option>
-									  <option value="CNY">CNY - Yuan Chino</option>
-									  <option value="KRW">KRW - Won Surcoreano</option>
-									  <option value="INR">INR - Rupia India</option>
-									  <option value="THB">THB - Baht Tailandés</option>
-									  <option value="VND">VND - Dong Vietnamita</option>
+									<option value="USD">USD - Dólar</option>
+									<option value="COP">COP - Peso Colombiano</option>
+									<option value="EUR">EUR - Euro</option>
+									<option value="JPY">JPY - Yen Japonés</option>
+									<option value="CNY">CNY - Yuan Chino</option>
+									<option value="KRW">KRW - Won Surcoreano</option>
+									<option value="INR">INR - Rupia India</option>
+									<option value="THB">THB - Baht Tailandés</option>
+									<option value="VND">VND - Dong Vietnamita</option>
 									</select>
-								  </div>
-								  
-								
+								</div>
+
+								<!-- Selector de método de pago -->
 								<label for="paymentMethod">Método de pago:</label>
 								<select id="paymentMethod" name="paymentMethod" required>
 									<option value="">Selecciona...</option>
-									<option value="credit_card">Tarjeta de crédito</option>
+									<option value="creditCard">Tarjeta de crédito</option>
 									<option value="paypal">PayPal</option>
 									<!-- <option value="pse">PSE</option> -->
 								</select>
 								<br>
-								
-								<!-- Formularios específicos -->
-								<div id="creditCardForm" class="payment-form" style="display: none; margin-top: 1rem;">
-									<label>Número de Tarjeta de Crédito:</label>
-									<input type="text" name="cardNumber" id="cardNumber" placeholder="Número de tarjeta" maxlength="19" required
-										pattern="\d{13,19}" title="Debe contener entre 13 y 19 dígitos numéricos" /><br>
+
+								<!-- Formulario para tarjeta de crédito (oculto por defecto) -->
+								<div id="creditCardForm" style="display: none;" class="payment-form">
+									<label for="cardNumber">Número de Tarjeta de Crédito:</label>
+									<input 
+										type="text" 
+										name="cardNumber" 
+										id="cardNumber" 
+										placeholder="Número de tarjeta" 
+										maxlength="19" 
+										required 
+										pattern="\d{13,19}" 
+										title="Debe contener entre 13 y 19 dígitos numéricos sin espacios" 
+										/>
+										<span id="cardError" style="color: red; display: none;">Tarjeta inválida</span>
+<br>
 									<span id="cardError" style="color: red; display: none;">Tarjeta inválida</span>
 
-								
-									<label>Nombre en Tarjeta:</label>
-									<input type="text" name="cardName" placeholder="Nombre en la tarjeta" /><br>
-								
-									<label>Fecha de Expiración:</label>
-									<div class="expiration-selects">
-										
-										<select id="expYear" name="expYear">
-											<option value="">Año</option>
-											<!-- Años -->
-										</select>
-									</div>
-									<select id="expMonth" name="expMonth">
-										<option value="">Mes</option>
-										<!-- Meses -->
-									</select>
-								
-									<label>CVV:</label>
-									<input type="text" name="cvv" id="cvv" placeholder="CVV" maxlength="3" pattern="\d{3}" inputmode="numeric" /><br>
+									<label for="cardName">Nombre en Tarjeta:</label>
+									<input type="text" name="cardName" placeholder="Nombre en la tarjeta" required/><br>
 
+									<label for="expYear">Fecha de Expiración:</label>
+									<select id="expYear" name="expYear" required>
+									<option value="">Año</option>
+									</select>
+									<select id="expMonth" name="expMonth" required> 
+									<option value="">Mes</option>
+									</select>
+
+									<label for="cvv">CVV:</label>
+									<input type="text" name="cvv" id="cvv" placeholder="CVV" maxlength="3" pattern="\d{3}" inputmode="numeric" required/><br>
 								</div>
-								
-								<div id="paypalForm" class="payment-form" style="display: none; margin-top: 1rem;">
-									<label>Correo electrónico en PayPal:</label>
-									<input type="email" name="paypalEmail"
-										pattern="^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
-										title="Ingresa un correo válido como ejemplo@dominio.com" />
+
+								<!-- Formulario para PayPal (oculto por defecto) -->
+								<div id="paypalForm" style="display: none;" class="payment-form">
+									<label for="paypalEmail">Correo electrónico en PayPal:</label>
+									<input type="email" name="paypalEmail" pattern="^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
+									title="Ingresa un correo válido como ejemplo@dominio.com" required/>
 								</div>
-								
-								<div id="pseForm" class="payment-form" style="display: none; margin-top: 1rem;">
-									<label>Banco:</label>
+
+								<!-- Formulario para PSE (oculto por defecto) -->
+								<div id="pseForm" class="payment-form" style="display: none;">
+									<label for="bank">Banco:</label>
 									<input type="text" name="bank" placeholder="Banco" /><br>
-								
-									<label>Tipo de Documento:</label>
+
+									<label for="docType">Tipo de Documento:</label>
 									<input type="text" name="docType" placeholder="Tipo de documento" /><br>
-								
-									<label>Número de Documento:</label>
+
+									<label for="docNumber">Número de Documento:</label>
 									<input type="text" name="docNumber" placeholder="Número de documento" /><br>
 								</div>
-								
-								<button type="submit" id="payBtn" disabled>Pagar Inscripción</button>
-  
 
+								<!-- Botón de pago -->
+								<button type="submit" id="payBtn" disabled>Pagar Inscripción</button>
 							</form>
+
 						  </article>
 
 						  <!-- Popup de carga -->
