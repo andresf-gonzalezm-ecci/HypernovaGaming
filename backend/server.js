@@ -691,3 +691,27 @@ app.put('/users/active/:id', async (req, res) => {
     res.status(500).json({ message: 'Error al actualizar el Usuario' });
   }
 });
+
+app.put('/users/type/:id', async (req, res) => {
+  const { id } = req.params;
+  const { user_type_id } = req.body;
+
+  try {
+    const connection = await connectDB();
+
+    // Actualizar el tipo de usuario (1: Admin, 2: Usuario)
+    const [result] = await connection.execute(
+      'UPDATE users SET user_type_id = ? WHERE user_id = ?',
+      [user_type_id, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    res.status(200).json({ message: 'Tipo de usuario actualizado correctamente' });
+  } catch (err) {
+    console.error('Error al cambiar tipo de usuario:', err);
+    res.status(500).json({ message: 'Error del servidor' });
+  }
+});
