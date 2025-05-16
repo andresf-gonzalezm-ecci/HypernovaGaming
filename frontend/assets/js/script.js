@@ -467,7 +467,11 @@ async function cargarUsuarios() {
             ${user.active ? 'Bloquear' : 'Desbloquear'}
           </button>
         </td>
-
+        <td>
+          <button onclick="cambiarTipoUsuario(${user.user_id}, ${user.user_type_id})">
+            Cambiar a ${user.user_type_id === 1 ? 'Usuario' : 'Administrador'}
+          </button>
+        </td>
       `;
       tbody.appendChild(tr);
     });
@@ -504,6 +508,36 @@ async function cambiarEstadoUsuario(id, nuevoEstado) {
     alert("❌ Error al conectar con el servidor.");
   }
 }
+
+async function cambiarTipoUsuario(userId, tipoActual) {
+  const nuevoTipo = tipoActual === 1 ? 2 : 1;
+
+  const confirmacion = confirm(`¿Estás seguro de cambiar el tipo de usuario?`);
+
+  if (!confirmacion) return;
+
+  try {
+    const res = await fetch(`/users/type/${userId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_type_id: nuevoTipo })
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      alert("✅ Tipo de usuario actualizado correctamente.");
+      cargarUsuarios(); // Recargar la tabla de usuarios
+    } else {
+      alert("❌ Error al actualizar tipo de usuario: " + data.message);
+    }
+
+  } catch (err) {
+    console.error("Error al cambiar tipo de usuario:", err);
+    alert("❌ Error de conexión con el servidor");
+  }
+}
+
 
 // Logout
 document.getElementById("logoutBtn").addEventListener("click", async function(e) {
@@ -633,7 +667,6 @@ document.getElementById("getTournaments").addEventListener("click", async functi
 
       // Renderizar torneos con o sin funciones admin
       renderTorneos(data.tournaments, isAdmin);
-      document.getElementById("createTournamentBtn").style.display = 'block';
 
     } else {
       alert("No se pudieron los torneos.");
