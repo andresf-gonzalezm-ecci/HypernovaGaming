@@ -175,7 +175,7 @@ app.post('/login', async (req, res) => {
           isAdmin: user.user_type_id === 1 // Asumiendo que 1 es para admin
         };
 
-        return res.json({ success: true, user_type_id: user.user_type_id });
+        return res.json({ success: true, user_id: user.user_id, user_type_id: user.user_type_id });
       } else {
         return res.json({ success: false, message: 'Contraseña incorrecta' });
       }
@@ -260,6 +260,16 @@ app.put('/account', async (req, res) => {
       address || null,
       updated_at,
       req.session.user.user_id
+    ]);
+
+    await connection.execute(`
+      INSERT INTO user_activity_log
+        (user_id, action, timestamp, details)
+      VALUES
+        (?, 'update_account', NOW(), ?)
+    `, [
+      req.session.user.user_id,
+      `Actualizó perfil: email=${email}, name=${first_name} ${last_name}, birthdate=${birthdate}, country=${country}, city=${city}, address=${address}`
     ]);
 
     console.log("Datos actualizados correctamente:", req.body);
@@ -634,13 +644,19 @@ app.post('/inscribirse', async (req, res) => {
     const connection = await connectDB();
 
     // Insertar inscripción del usuario en el torneo
-    await connection.execute(
-      `INSERT INTO tournament_registrations (user_id, tournament_id, registration_date, status)
-      VALUES (?, ?, NOW(), 'Inscrito')`,
+    const [result] = await connection.execute(
+      `INSERT INTO tournament_registrations
+         (user_id, tournament_id, registration_date, status)
+       VALUES (?, ?, NOW(), 'Inscrito')`,
       [user_id, tournament_id]
     );
 
-    res.json({ success: true, message: 'Inscripción exitosa' });
+    res.json({
+      success: true,
+      message: 'Inscripción exitosa',
+      registration_id: result.insertId
+    });
+
   } catch (err) {
     console.error('Error al inscribirse:', err);
     res.status(500).json({ success: false, message: 'Error en la inscripción' });
@@ -715,3 +731,36 @@ app.put('/users/type/:id', async (req, res) => {
     res.status(500).json({ message: 'Error del servidor' });
   }
 });
+
+app.post('/payments', async (req, res) => {
+  const { registration_id, payment_date, amount, currency, payment_method, payment_status } = req.body;
+
+  console.log(req.body);
+
+  if (!registration_id || !payment_date || !amount || !currency || !payment_method || !payment_status) {
+    return res.status(400).json({ message: 'Faltan campos requeridos' });
+  }
+
+  try {
+    const connection = await connectDB(); // Tu función de conexión desde `db.js`
+
+    const [result] = await connection.execute(
+      `INSERT INTO payments (registration_id, payment_date, amount, currency, payment_method, payment_status)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [registration_id, payment_date, amount, currency, payment_method, payment_status]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Pago registrado correctamente',
+      payment_id: result.insertId
+    });
+
+  } catch (error) {
+    console.error('Error al insertar el pago:', error);
+    res.status(500).json({ message: 'Error del servidor al insertar el pago' });
+  }
+});
+
+
+

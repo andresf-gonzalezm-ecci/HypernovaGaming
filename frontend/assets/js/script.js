@@ -246,6 +246,10 @@ document.getElementById("address").addEventListener("input", function(e) {
 document.getElementById("loginForm").addEventListener("submit", async function(e) {
   e.preventDefault();
 
+  const loginBtn = document.getElementById('loginBtn');
+  loginBtn.disabled = true;           
+  loginBtn.textContent = 'Entrando...'; 
+  
   const username = document.getElementById("username").value;
   const password = document.getElementById("password").value;
 
@@ -540,30 +544,36 @@ async function cambiarTipoUsuario(userId, tipoActual) {
 
 
 // Logout
-document.getElementById("logoutBtn").addEventListener("click", async function(e) {
+document.getElementById('logoutBtn').addEventListener('click', async function(e) {
   e.preventDefault();
+  const btn = this;
+  btn.disabled = true;
+  btn.textContent = 'Saliendo...';
 
-  const logoutBtn = document.getElementById("logoutBtn");
-  logoutBtn.textContent = "Cerrando sesión...";
+  try {
+    const res = await fetch('/logout', {
+      method: 'GET',          // tu endpoint es GET /logout
+      credentials: 'include'  // para enviar la cookie de sesión
+    });
+    const data = await res.json();
 
-  const response = await fetch("/logout", {
-    method: "GET",
-    credentials: "include"
-  });
-
-  const data = await response.json();
-
-  if (data.success) {
-    document.getElementById("loginItem").style.display = "inline-block";
-    document.getElementById("accountItem").style.display = "none";
-    document.getElementById("logoutItem").style.display = "none";
-    document.getElementById('h3admon').style.display = 'none';
-    logoutBtn.textContent = "Cerrar sesión";
-  } else {
-    alert("Error al cerrar sesión");
-    logoutBtn.textContent = "Cerrar sesión";
+    if (res.ok && data.success) {
+      // Recarga la página para limpiar todo el DOM
+      window.location.reload();
+    } else {
+      alert(data.message || 'No se pudo cerrar sesión');
+      btn.disabled = false;
+      btn.textContent = 'Cerrar Sesión';
+    }
+  } catch (err) {
+    console.error('Error al cerrar sesión:', err);
+    alert('Error de conexión');
+    btn.disabled = false;
+    btn.textContent = 'Cerrar Sesión';
   }
 });
+
+
 
 // Edit Account
 document.getElementById("editAccountBtn").addEventListener("click", () => {
@@ -1370,60 +1380,67 @@ document.getElementById("PaymentForm").addEventListener("submit", async function
 
   const paypalSection = document.getElementById("paypalForm");
   const cardSection = document.getElementById("creditCardForm");
+  const paymentMethodSelect = document.getElementById("paymentMethod");
+  const currencySelect = document.getElementById("currency");
+  const amount = parseFloat(document.getElementById("paymentTournamentFee").textContent.trim());
+  const currency = currencySelect.value || "USD";
+  const paymentStatus = "Completado"; // Puedes cambiar a "Pendiente" si aplicara
 
-  // Validar según el método visible
+  let paymentMethodId = null;
+  let isValid = true;
+
+  // Validación según método de pago
   if (paypalSection.style.display !== "none") {
     const paypalEmail = paypalSection.querySelector("input[name='paypal_email']");
-    if (!paypalEmail || paypalEmail.value.trim() === "") {
-      alert("Por favor ingresa tu correo de PayPal.");
+    // if (!paypalEmail || paypalEmail.value.trim() === "") {
+    //   alert("Por favor ingresa tu correo de PayPal.");
+    //   return;
+    // }
+    paymentMethodId = 2; // ID de PayPal (debes tenerlo en tu tabla)
+  } else if (cardSection.style.display !== "none") {
+    const cardNumber = cardSection.querySelector("input[name='cardNumber']");
+    const cardName = cardSection.querySelector("input[name='cardName']");
+    const expMonth = cardSection.querySelector("select[name='expMonth']");
+    const expYear = cardSection.querySelector("select[name='expYear']");
+    const cvv = cardSection.querySelector("input[name='cvv']");
+
+    if (
+      !cardNumber.value.trim() ||
+      !cardName.value.trim() ||
+      !expMonth.value.trim() ||
+      !expYear.value.trim() ||
+      !cvv.value.trim()
+    ) {
+      alert("Por favor completa todos los campos de la tarjeta.");
       return;
     }
-  } else if (cardSection.style.display !== "none") {
-      const cardNumber = cardSection.querySelector("input[name='cardNumber']");
-      const cardName = cardSection.querySelector("input[name='cardName']");
-      const expMonth = cardSection.querySelector("select[name='expMonth']");
-      const expYear = cardSection.querySelector("select[name='expYear']");
-      const cvv = cardSection.querySelector("input[name='cvv']");
 
-      if (
-        !cardNumber.value.trim() ||
-        !cardName.value.trim() ||
-        !expMonth.value.trim() ||
-        !expYear.value.trim() ||
-        !cvv.value.trim()
-      ) {
-        alert("Por favor completa todos los campos de la tarjeta.");
-        return;
-      }
+    const cardPattern = /^\d{13,19}$/;
+    const cvvPattern = /^\d{3}$/;
 
-      // Validación extra si lo deseas:
-      const cardPattern = /^\d{13,19}$/;
-      const cvvPattern = /^\d{3}$/;
+    if (!cardPattern.test(cardNumber.value)) {
+      alert("Número de tarjeta inválido.");
+      return;
+    }
 
-      if (!cardPattern.test(cardNumber.value)) {
-        alert("Número de tarjeta inválido.");
-        return;
-      }
+    if (!cvvPattern.test(cvv.value)) {
+      alert("CVV inválido.");
+      return;
+    }
 
-      if (!cvvPattern.test(cvv.value)) {
-        alert("CVV inválido.");
-        return;
-      }
+    paymentMethodId = 1; // ID de tarjeta de crédito
   } else {
     alert("No se ha seleccionado un método de pago.");
     return;
   }
 
-  const payBtn = document.getElementById("payBtn");
+  // Mostrar carga
   const loadingPopup = document.getElementById("loadingPopup");
-  const paymentResult = document.getElementById("paymentResult");
-
-  // Mostrar popup de carga
   loadingPopup.style.display = "flex";
 
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Simulación
+  await new Promise(resolve => setTimeout(resolve, 2000)); // Simulación
 
-  const pagoExitoso = Math.random() < 0.5;
+  const pagoExitoso = true; // Simulación controlada
   loadingPopup.style.display = "none";
 
   if (!pagoExitoso) {
@@ -1437,24 +1454,51 @@ document.getElementById("PaymentForm").addEventListener("submit", async function
     return;
   }
 
-  const res = await fetch("/inscribirse", {
+  // 1. Inscribirse
+  const inscripcion = await fetch("/inscribirse", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({ tournament_id: torneoId })
   });
 
-  const data = await res.json();
+  const dataInscripcion = await inscripcion.json();
 
-  if (data.success) {
-    document.getElementById("Payment").style.display = "none";
-    paymentResult.style.display = "block";
-    location.hash = "#paymentResult";
-  } else {
-    alert("Error al inscribirse: " + data.message);
+  if (!dataInscripcion.success) {
+    alert("Error al inscribirse: " + dataInscripcion.message);
+    return;
   }
-});
 
+  const registrationId = dataInscripcion.registration_id;
+
+  // 2. Registrar el pago en la base de datos
+  const payment = await fetch("/payments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      registration_id: registrationId,
+      payment_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      amount,
+      currency,
+      payment_method: paymentMethodId,
+      payment_status: paymentStatus
+    })
+  });
+
+  const dataPago = await payment.json();
+
+  console.log(dataPago);
+
+  if (!dataPago.success) {
+    alert("Error al registrar el pago.");
+    return;
+  }
+
+  // 3. Éxito total
+  document.getElementById("Payment").style.display = "none";
+  document.getElementById("paymentResult").style.display = "block";
+  location.hash = "#paymentResult";
+});
 
 
 function updateRequiredFields() {
@@ -1473,10 +1517,8 @@ function updateRequiredFields() {
 document.getElementById("paymentMethod").addEventListener("change", () => {
   const method = document.getElementById("paymentMethod").value;
 
-  // Ocultar todos los formularios
   document.querySelectorAll(".payment-form").forEach(f => f.style.display = "none");
 
-  // Mostrar el seleccionado
   if (method) {
     document.getElementById(`${method}Form`).style.display = "block";
   }
