@@ -26,6 +26,42 @@
 			};
 			</script>
 		<script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+		<script src="https://www.paypal.com/sdk/js?client-id=AYD07XbnTJt7-JYeoacGFA3aPoiRRl-j4NjL8HK1U5IddJhs8j-Fy_dfInMeOkvOFkKTJUSMDfPGIxcS&currency=USD"></script>
+
+		<script>
+			paypal.Buttons({
+				createOrder: function(data, actions) {
+				// Llama a tu backend para crear una orden
+				return fetch('/api/create-order', {
+					method: 'post',
+					headers: {
+					'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+					// Puedes pasarle info adicional
+					})
+				}).then(res => res.json())
+					.then(order => order.id); // devuelve ID de orden
+				},
+
+				onApprove: function(data, actions) {
+				// Llama a tu backend para capturar el pago
+				return fetch('/api/capture-order', {
+					method: 'post',
+					headers: {
+					'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+					orderID: data.orderID
+					})
+				}).then(res => res.json())
+					.then(details => {
+					alert('Pago completado por ' + details.payer.name.given_name);
+					});
+				}
+			}).render('#paypal-button-container');
+			</script>
+
 
 	</head>
 	<body class="is-preload">
@@ -93,8 +129,19 @@
 							<h2>Registro</h2>
 							<form id="registerForm">
 								<label for="newUsername">Usuario:</label>
-								<input type="text" id="newUsername" name="newUsername" placeholder="Elige un usuario" maxlength="30" required oninput="this.value = this.value.replace(/[^a-zA-Z0-9]/g, '')">
-								<small id="usernameLimitMsg" style="color: red; display: none;">Has llegado al límite de 30 caracteres.</small><br>
+									<input 
+									type="text" 
+									id="newUsername" 
+									name="newUsername" 
+									placeholder="Elige un usuario" 
+									maxlength="30" 
+									required 
+									oninput="validarUsuario(this)"
+									>
+									<small id="usernameLimitMsg" style="color: red; display: none;">Has llegado al límite de 30 caracteres.</small>
+									<small id="usernameNumberMsg" style="color: red; display: none;">Solo puedes usar hasta 5 números.</small>
+									<small id="usernameMinMsg" style="color: red; display: none;">El usuario debe tener al menos 3 caracteres.</small><br>
+
 						  
 								<label for="email">Correo electrónico:</label>
 								<input 
@@ -110,28 +157,33 @@
 
 								<label for="first_name">Nombre:</label>
 								<input 
-									type="text" 
-									id="first_name" 
-									name="first_name" 
-									maxlength="100" 
-									placeholder="Primer Nombre" 
-									required
-									pattern="^[a-zA-Z0-9]+(?: [a-zA-Z0-9]+){0,2}$"
-									title="Solo letras, números y máximo 2 espacios entre palabras"
-								><br>
-								
+								type="text" 
+								id="first_name" 
+								name="first_name" 
+								maxlength="100" 
+								placeholder="Primer Nombre" 
+								required
+								pattern="^[A-Za-zÁÉÍÓÚáéíóúÑñ]+(?: [A-Za-zÁÉÍÓÚáéíóúÑñ]+){0,2}$"
+								title="Solo letras (máximo 3 palabras)"
+								oninput="validarMinimoNombre(this, 'firstNameError')"
+								>
+								<small id="firstNameError" class="error-msg" style="color: red; display: none;">Debe tener al menos 3 caracteres.</small>
+
 								<label for="last_name">Apellido:</label>
 								<input 
-									type="text" 
-									id="last_name" 
-									name="last_name" 
-									maxlength="100" 
-									placeholder="Apellido" 
-									required
-									pattern="^[a-zA-Z0-9]+(?: [a-zA-Z0-9]+){0,2}$"
-									title="Solo letras, números y máximo 2 espacios entre palabras"
-								><br>
-								<small id="nameError" class="error-msg" style="color: red; display: none;"></small>
+								type="text" 
+								id="last_name" 
+								name="last_name" 
+								maxlength="100" 
+								placeholder="Apellido" 
+								required
+								pattern="^[A-Za-zÁÉÍÓÚáéíóúÑñ]+(?: [A-Za-zÁÉÍÓÚáéíóúÑñ]+){0,2}$"
+								title="Solo letras (máximo 3 palabras)"
+								oninput="validarMinimoNombre(this, 'lastNameError')"
+								>
+								<small id="lastNameError" class="error-msg" style="color: red; display: none;">Debe tener al menos 3 caracteres.</small>
+
+
 
 							  <label for="newPassword">Contraseña:</label>
 								<input type="password" id="newPassword" name="newPassword" placeholder="Elige una contraseña" required>
@@ -159,21 +211,23 @@
 								required
 								pattern="^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$"
 								title="Solo letras y espacios (máximo 100 caracteres)"
+								oninput="verificarLimiteCiudad(this)"
 								><br>
-								<small id="cityError" class="error-msg" style="color: red; display: none;"></small>
+								<small id="cityError" class="error-msg" style="color: red; display: none;">Has llegado al límite de 100 caracteres.</small>
 
 								<label for="address">Dirección:</label>
 								<input 
-								  type="text" 
-								  id="address" 
-								  name="address" 
-								  maxlength="255" 
-								  placeholder="Ej: Av. Principal #123-45, Ciudad" 
-								  required
-								  oninput="this.value = this.value.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s#\-.,]/g, '')"
-								  title="Solo letras, números, espacios y #-.,"
-								><br>
-								<small id="addressError" class="error-msg" style="color: red; display: none;"></small>
+								type="text" 
+								id="address" 
+								name="address" 
+								maxlength="255" 
+								placeholder="Ej: Av. Principal #123-45, Ciudad" 
+								required
+								oninput="validarDireccion(this)"
+								title="Solo letras, números, espacios y #-.," 
+								>
+								<small id="addressError" class="error-msg" style="color: red; display: none;"></small><br>
+
 								
 						  
 							  <button type="submit">Registrarse</button>
@@ -245,17 +299,19 @@
 									<div class="form-group">
 										<label for="registrationFee">Costo de Inscripción (USD):</label>
 										<input 
-										  type="number" 
-										  id="registrationFee" 
-										  name="registration_fee" 
-										  min="0" 
-										  max="10000"
-										  step="0.01" 
-										  required
+										type="number" 
+										id="registrationFee" 
+										name="registration_fee" 
+										min="0" 
+										max="10000"
+										step="0.01" 
+										required
+										oninput="validarRegistroFee(this)"
 										>
 										<small id="feeError" style="color: red; display: none;">
-										  El costo máximo de inscripción es $10,000 USD
+										El costo debe ser entre $0 y $10,000 USD
 										</small>
+
 									</div><br>
 									
 									<div class="form-group">
@@ -285,7 +341,7 @@
 
 								
 								<!-- Tabla de torneos -->
-								<table class="tournament-table">
+								<table class="tournament-table" id="tournament-table"  style="display: none;">
 								  <thead>
 									<tr>
 									  <th>Título</th>
@@ -317,6 +373,23 @@
 								</table>
 								<br>
 								<button type="submit" id="createTournamentBtn" style="color:green !important; display: none;">Crear Torneo</button>
+								<button type="submit" id="mytournamentsBtn" style="color:rgb(212, 137, 196) !important;">Mis Torneos</button>
+
+								<div id="myTournamentsSection" style="display: none;">
+								<h3>Mis Torneos</h3>
+								<table id="myTournamentsTable" border="1">
+									<thead>
+									<tr>
+										<th>Nombre del Torneo</th>
+										<th>Fecha</th>
+										<th>Estado</th>
+									</tr>
+									</thead>
+									<tbody></tbody>
+								</table>
+								</div>
+
+
 							</article>
 
 							<article id="gestionGanadorArticle" hidden>
@@ -405,13 +478,16 @@
 
 									<label for="cvv">CVV:</label>
 									<input type="text" name="cvv" id="cvv" placeholder="CVV" maxlength="3" pattern="\d{3}" inputmode="numeric" required/><br>
+									<!-- Botón de pago -->
+									<button type="submit" id="payBtn" disabled>Pagar Inscripción</button>	
 								</div>
 
 								<!-- Formulario para PayPal (oculto por defecto) -->
 								<div id="paypalForm" style="display: none;" class="payment-form">
-									<label for="paypalEmail">Correo electrónico en PayPal:</label>
+									<!-- <label for="paypalEmail">Correo electrónico en PayPal:</label>
 									<input type="email" name="paypalEmail" pattern="^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
-									title="Ingresa un correo válido como ejemplo@dominio.com" required/>
+									title="Ingresa un correo válido como ejemplo@dominio.com" required/> -->
+									<div id="paypal-button-container"></div>
 								</div>
 
 								<!-- Formulario para PSE (oculto por defecto) -->
@@ -426,8 +502,7 @@
 									<input type="text" name="docNumber" placeholder="Número de documento" /><br>
 								</div>
 
-								<!-- Botón de pago -->
-								<button type="submit" id="payBtn" disabled>Pagar Inscripción</button>
+								
 							</form>
 
 						  </article>

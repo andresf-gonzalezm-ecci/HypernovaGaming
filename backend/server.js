@@ -77,12 +77,13 @@ app.use(express.static(path.join(__dirname, "../frontend")));
 
 app.get('/check-session', (req, res) => {
   if (req.session.user) {
-    console.log('isAdmin:', req.session.user.isAdmin); // Verificar el valor de isAdmin
+    console.log('Usuario en sesión:', req.session.user);  
     res.json({ success: true, user: req.session.user }); 
   } else {
     res.json({ success: false });
   }
 });
+
 
 
 // CUENTA // 
@@ -361,7 +362,7 @@ app.get('/tournaments', async (req, res) => {
 
     // Si no es admin, filtrar torneos inactivos
     if (!isAdmin) {
-      query += " WHERE t.status IN (1,2)"; // Activo o Finalizado
+      query += " WHERE t.status IN (2,3)"; // Activo o Finalizado
     }
 
     query += `
@@ -420,7 +421,7 @@ app.post('/tournaments', async (req, res) => {
         registration_fee,
         max_participants,
         now,
-        1 // status por defecto: Activo
+        2 // status por defecto: Activo
       ]
     );
 
@@ -763,4 +764,39 @@ app.post('/payments', async (req, res) => {
 });
 
 
+// PAYPAL
+const paypalRoutes = require('./routes/paypalRoutes');
 
+app.use(express.json());
+
+// Usar las rutas de PayPal con prefijo /api
+app.use('/api', paypalRoutes);
+
+app.listen(3000, () => {
+  console.log('Servidor corriendo en http://localhost:3000');
+});
+
+app.get('/api/my-tournaments/:userId', async (req, res) => {
+  const userId = req.params.userId;
+  console.log("id:", userId);
+
+  try {
+    const [rows] = await db.query(`
+        SELECT 
+        t.name AS nombre_torneo,
+        t.start_date AS fecha_inicio,
+        ts.description AS estado,
+        tr.user_id
+      FROM tournament_registrations tr
+      JOIN tournaments t ON tr.tournament_id = t.tournament_id
+      LEFT JOIN tournament_statuses ts ON t.status = ts.id
+      WHERE tr.user_id = ?;
+
+    `, [userId]);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('Error consultando torneos del usuario:', err);
+    res.status(500).json({ error: 'Error al obtener torneos' });
+  }
+});

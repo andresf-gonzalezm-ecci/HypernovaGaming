@@ -275,6 +275,8 @@ document.getElementById("loginForm").addEventListener("submit", async function(e
 
   } else {
     alert(data.message);
+    loginBtn.disabled = false;           
+    loginBtn.textContent = 'Iniciar Sesion'; 
   }
 });
 
@@ -737,7 +739,7 @@ async function renderTorneos() {
     `;
 
      // Si el torneo está finalizado, mostramos el ganador
-     if (torneo.status === 2) {
+     if (torneo.status === 3) {
       fila.innerHTML += `
         <td><span class="corona-icon">👑</span> Ganador: ${torneo.winner_username}</td>
       `;
@@ -757,7 +759,7 @@ async function renderTorneos() {
       let statusButtonHtml = '';
       let botonGanador = '';
 
-      if (torneo.status === 1 /* activo */) {
+      if (torneo.status === 2 /* activo */) {
         botonGanador = `
           <td>
             <button onclick="gestionarGanador(${torneo.tournament_id})">
@@ -767,11 +769,11 @@ async function renderTorneos() {
         `;
       }
     
-      if (torneo.status === 1) {
+      if (torneo.status === 2) {
         // Mostrar botón para INHABILITAR
         statusButtonHtml = `
           <td>
-            <button onclick="cambiarEstadoTorneo(${torneo.tournament_id}, 0)">
+            <button onclick="cambiarEstadoTorneo(${torneo.tournament_id}, 1)">
               <i class="fas fa-pause" style="font-size: 20px; color:rgb(206, 226, 94); cursor: pointer;"></i>
             </button>
           </td>
@@ -780,7 +782,7 @@ async function renderTorneos() {
         // Mostrar botón para HABILITAR
         statusButtonHtml = `
           <td>
-            <button onclick="cambiarEstadoTorneo(${torneo.tournament_id}, 1)"">
+            <button onclick="cambiarEstadoTorneo(${torneo.tournament_id}, 2)"">
               <i class="fas fa-play" style="font-size: 20px; color:green; cursor: pointer;"></i>
             </button>
           </td>
@@ -806,6 +808,8 @@ async function renderTorneos() {
       tbody.appendChild(fila);    
 
   });
+
+  document.getElementById('tournament-table').style.display = 'table'; // o 'block' si no es <table>
 }
 
 async function eliminarTorneo(id) {
@@ -1130,7 +1134,75 @@ async function inscribirTorneo(torneoId) {
   document.getElementById("paymentTournamentDescription").textContent = torneo.description;
   document.getElementById("paymentTournamentFee").textContent = torneo.registration_fee;
 
-  // Navegar al hash del formulario de pago
+  console.log(torneo.registration_fee);
+
+    if (torneo.registration_fee === "0.00") {
+      // Mostrar carga
+  const loadingPopup = document.getElementById("loadingPopup");
+  loadingPopup.style.display = "flex";
+
+  await new Promise(resolve => setTimeout(resolve, 2000)); // Simulación
+
+  const pagoExitoso = true; // Simulación controlada
+  loadingPopup.style.display = "none";
+
+  if (!pagoExitoso) {
+    alert("❌ Pago fallido. Inténtalo nuevamente.");
+    return;
+  }
+
+  if (!torneoId) {
+    alert("Error: torneo no encontrado.");
+    return;
+  }
+
+  // 1. Inscribirse
+  const inscripcion = await fetch("/inscribirse", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ tournament_id: torneoId })
+  });
+
+  const dataInscripcion = await inscripcion.json();
+
+  if (!dataInscripcion.success) {
+    alert("Error al inscribirse: " + dataInscripcion.message);
+    return;
+  }
+
+  // const registrationId = dataInscripcion.registration_id;
+
+  // // 2. Registrar el pago en la base de datos
+  // const payment = await fetch("/payments", {
+  //   method: "POST",
+  //   headers: { "Content-Type": "application/json" },
+  //   body: JSON.stringify({
+  //     registration_id: registrationId,
+  //     payment_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+  //     amount: 0,
+  //     currency,
+  //     payment_method: paymentMethodId,
+  //     payment_status: paymentStatus
+  //   })
+  // });
+
+  // const dataPago = await payment.json();
+
+  // console.log(dataPago);
+
+  // if (!dataPago.success) {
+  //   alert("Error al registrar el pago.");
+  //   return;
+  // }
+
+  // 3. Éxito total
+  document.getElementById("Payment").style.display = "none";
+  document.getElementById("paymentResult").style.display = "block";
+  location.hash = "#paymentResult";
+      return;
+    }
+
   location.hash = "#Payment";
 }
 
@@ -1380,23 +1452,90 @@ document.getElementById("PaymentForm").addEventListener("submit", async function
 
   const paypalSection = document.getElementById("paypalForm");
   const cardSection = document.getElementById("creditCardForm");
-  const paymentMethodSelect = document.getElementById("paymentMethod");
   const currencySelect = document.getElementById("currency");
   const amount = parseFloat(document.getElementById("paymentTournamentFee").textContent.trim());
   const currency = currencySelect.value || "USD";
   const paymentStatus = "Completado"; // Puedes cambiar a "Pendiente" si aplicara
+  const torneoId = window.torneoSeleccionado?.tournament_id;
 
   let paymentMethodId = null;
   let isValid = true;
 
+  const res = await fetch('/check-session', {
+    method: 'GET',
+    credentials: 'include' // IMPORTANTE para que envíe la cookie de sesión
+  });
+
+  const data = await res.json();
+
+  if (data.success && data.user && data.user.id) {
+      const userId = data.user.id;
+    } else {
+      alert("Debes iniciar sesión para inscribirte al torneo.");
+      return;
+    }
+
   // Validación según método de pago
   if (paypalSection.style.display !== "none") {
-    const paypalEmail = paypalSection.querySelector("input[name='paypal_email']");
-    // if (!paypalEmail || paypalEmail.value.trim() === "") {
-    //   alert("Por favor ingresa tu correo de PayPal.");
-    //   return;
-    // }
+    
     paymentMethodId = 2; // ID de PayPal (debes tenerlo en tu tabla)
+      const paymentMethodId = 2;
+
+      // Validación de email si lo vas a usar
+      // if (!paypalEmail || paypalEmail.value.trim() === "") {
+      //   alert("Por favor ingresa tu correo de PayPal.");
+      //   return;
+      // }
+
+      // Crea el botón de PayPal dinámicamente
+      const paypalContainer = document.getElementById("paypal-button-container");
+      paypalContainer.innerHTML = ""; // Limpiar por si ya hay uno
+
+      paypal.Buttons({
+        createOrder: function (data, actions) {
+          return fetch("/api/tournament/create-tournament-order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId,
+              torneoId,
+              amount
+            })
+          })
+            .then(res => res.json())
+            .then(data => data.id);
+        },
+
+        onApprove: function (data, actions) {
+          return fetch("/api/tournament/capture-tournament-order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderID: data.orderID,
+              userId,
+              tournamentId
+            })
+          })
+            .then(res => res.json())
+            .then(details => {
+              if (details.success) {
+                alert("Inscripción exitosa al torneo.");
+                // Aquí puedes redirigir o actualizar la UI
+              } else {
+                alert("El pago no fue exitoso.");
+              }
+            });
+        },
+
+        onCancel: function (data) {
+          alert("Pago cancelado.");
+        },
+
+        onError: function (err) {
+          console.error(err);
+          alert("Hubo un error con PayPal.");
+        }
+      }).render("#paypal-button-container");
   } else if (cardSection.style.display !== "none") {
     const cardNumber = cardSection.querySelector("input[name='cardNumber']");
     const cardName = cardSection.querySelector("input[name='cardName']");
@@ -1448,7 +1587,6 @@ document.getElementById("PaymentForm").addEventListener("submit", async function
     return;
   }
 
-  const torneoId = window.torneoSeleccionado?.tournament_id;
   if (!torneoId) {
     alert("Error: torneo no encontrado.");
     return;
@@ -1553,9 +1691,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!/^\d{3}$/.test(cvv)) valid = false;
 
     } else if (method === "paypal") {
-      const email = form.paypalEmail.value.trim();
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) valid = false;
 
     } else if (method === "pse") {
       const bank = form.bank.value.trim();
@@ -1594,4 +1729,117 @@ document.addEventListener("DOMContentLoaded", () => {
   cardInput.addEventListener("input", () => {
     cardInput.value = cardInput.value.replace(/\s+/g, '');
   });
+});
+
+
+function validarUsuario(input) {
+  // Eliminar caracteres no alfanuméricos
+  input.value = input.value.replace(/[^a-zA-Z0-9]/g, '');
+
+  const valor = input.value;
+  const numeros = (valor.match(/\d/g) || []).length;
+
+  // Mensajes
+  const numberMsg = document.getElementById('usernameNumberMsg');
+  const limitMsg = document.getElementById('usernameLimitMsg');
+  const minLengthMsg = document.getElementById('usernameMinMsg');
+
+  // Mostrar mensaje si hay más de 5 números
+  if (numeros > 5) {
+    input.value = valor.replace(/\d(?!.*\d)/, ''); // elimina el último número
+    numberMsg.style.display = 'inline';
+  } else {
+    numberMsg.style.display = 'none';
+  }
+
+  // Mostrar mensaje si llegó al límite de 30
+  limitMsg.style.display = valor.length >= 30 ? 'inline' : 'none';
+
+  // Mostrar mensaje si tiene menos de 3 caracteres
+  minLengthMsg.style.display = valor.length > 0 && valor.length < 3 ? 'inline' : 'none';
+}
+
+
+function verificarLimiteCiudad(input) {
+  const cityError = document.getElementById('cityError');
+  cityError.style.display = input.value.length >= 100 ? 'inline' : 'none';
+}
+
+function validarDireccion(input) {
+  const error = document.getElementById('addressError');
+
+  // Limpiar caracteres no permitidos
+  input.value = input.value.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s#\-.,]/g, '');
+
+  const valor = input.value;
+  const especiales = (valor.match(/[#\-.,]/g) || []).length;
+
+  // Validaciones
+  if (valor.length < 5) {
+    error.textContent = 'La dirección debe tener al menos 5 caracteres.';
+    error.style.display = 'inline';
+  } else if (especiales > 3) {
+    error.textContent = 'Solo se permiten hasta 3 caracteres especiales (#, -, ., ,).';
+    error.style.display = 'inline';
+  } else {
+    error.style.display = 'none';
+  }
+}
+
+function validarMinimoNombre(input, errorId) {
+  const error = document.getElementById(errorId);
+  const valor = input.value.trim();
+
+  if (valor.length > 0 && valor.length < 3) {
+    error.style.display = 'inline';
+  } else {
+    error.style.display = 'none';
+  }
+}
+
+document.getElementById('mytournamentsBtn').addEventListener('click', async () => {
+  try {
+    // Obtener datos de sesión para saber el ID del usuario
+    const sessionRes = await fetch('/check-session', { credentials: 'include' });
+    const sessionData = await sessionRes.json();
+
+    if (!sessionData.success) {
+      alert('Debes iniciar sesión para ver tus torneos.');
+      return;
+    }
+
+    const userId = sessionData.user.user_id; // o sessionData.user.userId, según cómo guardes el id en sesión
+    console.log("UserID:", userId);
+
+
+    // Consultar torneos en los que participó
+    const res = await fetch(`/api/my-tournaments/${userId}`);
+    const tournaments = await res.json();
+
+    console.log(tournaments);
+
+    const tableBody = document.querySelector('#myTournamentsTable tbody');
+    tableBody.innerHTML = ''; // Limpiar tabla
+
+    if (tournaments.length === 0) {
+      tableBody.innerHTML = '<tr><td colspan="3">No has participado en torneos aún.</td></tr>';
+    } else {
+      tournaments.forEach(t => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${t.nombre_torneo}</td>
+          <td>${t.fecha_inicio}</td>
+          <td>${t.estado}</td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    // Mostrar la sección de la tabla
+    document.getElementById('myTournamentsSection').style.display = 'block';
+
+  } catch (err) {
+    console.error('Error cargando tus torneos:', err);
+    alert('Hubo un error al cargar tus torneos.');
+  }
 });
