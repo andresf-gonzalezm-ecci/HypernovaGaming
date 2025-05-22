@@ -1461,17 +1461,26 @@ document.getElementById("PaymentForm").addEventListener("submit", async function
   let paymentMethodId = null;
   let isValid = true;
 
-  const res = await fetch('/check-session', {
-    method: 'GET',
-    credentials: 'include' // IMPORTANTE para que envíe la cookie de sesión
-  });
+  // const res = await fetch('/check-session', {
+  //   method: 'GET',
+  //   credentials: 'include' // IMPORTANTE para que envíe la cookie de sesión
+  // });
 
-  const data = await res.json();
+  // const data = await res.json();
 
-  if (data.success && data.user && data.user.id) {
-      const userId = data.user.id;
-    } else {
-      alert("Debes iniciar sesión para inscribirte al torneo.");
+  // if (data.success && data.user && data.user.id) {
+  //     const userId = data.user.id;
+  //   } else {
+  //     alert("Debes iniciar sesión para inscribirte al torneo.");
+  //     return;
+  //   }
+
+      // Obtener datos de sesión para saber el ID del usuario
+    const sessionRes = await fetch('/check-session', { credentials: 'include' });
+    const sessionData = await sessionRes.json();
+
+    if (!sessionData.success) {
+      alert('Debes iniciar sesión para ver tus torneos.');
       return;
     }
 
